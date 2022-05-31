@@ -49,7 +49,8 @@ module type S = sig
 
   val notification : _ t -> out_notification -> unit Fiber.t
 
-  val on_cancel : (unit -> unit Fiber.t) -> unit Fiber.t
+  (** only available inside requests *)
+  val cancel_token : unit -> Fiber.Cancel.t option Fiber.t
 
   module Batch : sig
     type t
