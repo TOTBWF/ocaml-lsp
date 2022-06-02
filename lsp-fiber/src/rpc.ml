@@ -256,6 +256,28 @@ struct
         in
         receive_response req resp)
 
+  let request_with_cancel (type r) (t : _ t) cancel ~on_cancel
+      (req : r Out_request.t) : [ `Ok of r | `Cancelled ] Fiber.t =
+    let* () = Fiber.return () in
+    let jsonrpc_req = create_request t req in
+    let+ resp, cancel_status =
+      Fiber.Cancel.with_handler cancel
+        ~on_cancel:(fun () -> on_cancel jsonrpc_req.id)
+        (fun () ->
+          let+ resp =
+            Session.request_with_cancel (Fdecl.get t.session) cancel jsonrpc_req
+          in
+          match resp with
+          | `Cancelled -> `Cancelled
+          | `Ok resp -> `Ok (receive_response req resp))
+    in
+    match cancel_status with
+    | Cancelled () -> `Cancelled
+    | Not_cancelled -> (
+      match resp with
+      | `Ok resp -> `Ok resp
+      | `Cancelled -> assert false)
+
   let notification (t : _ t) (n : Out_notification.t) : unit Fiber.t =
     let jsonrpc_request = Out_notification.to_jsonrpc n in
     Session.notification (Fdecl.get t.session) jsonrpc_request
@@ -336,6 +358,10 @@ module Client = struct
   let make handler io =
     let h_on_notification = h_on_notification handler in
     make ~name:"client" handler.h_on_request h_on_notification io
+
+  let request_with_cancel t cancel r =
+    request_with_cancel t cancel r ~on_cancel:(fun id ->
+        notification t (Client_notification.CancelRequest id))
 
   let start (t : _ t) (p : InitializeParams.t) =
     Fiber.of_thunk (fun () ->

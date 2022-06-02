@@ -82,6 +82,12 @@ module Client : sig
        and type 'a in_request = 'a Server_request.t
        and type in_notification = Server_notification.t
 
+  val request_with_cancel :
+       _ t
+    -> Fiber.Cancel.t
+    -> 'resp out_request
+    -> [ `Ok of 'resp | `Cancelled ] Fiber.t
+
   val initialized : _ t -> InitializeResult.t Fiber.t
 
   val start : _ t -> InitializeParams.t -> unit Fiber.t

@@ -69,7 +69,8 @@ struct
     { chan : Chan.t
     ; on_request : ('state, Id.t) context -> (Reply.t * 'state) Fiber.t
     ; on_notification : ('state, unit) context -> (Notify.t * 'state) Fiber.t
-    ; pending : (Response.t, [ `Stopped ]) result Fiber.Ivar.t Id.Table.t
+    ; pending :
+        (Response.t, [ `Stopped | `Cancelled ]) result Fiber.Ivar.t Id.Table.t
     ; stopped : unit Fiber.Ivar.t
     ; name : string
     ; mutable running : bool
@@ -286,6 +287,7 @@ struct
     let+ res = Fiber.Ivar.read ivar in
     match res with
     | Ok s -> s
+    | Error `Cancelled -> assert false
     | Error `Stopped -> raise (Stopped req)
 
   let request t (req : Message.request) =
@@ -299,9 +301,38 @@ struct
         register_request_ivar t req.id ivar;
         read_request_ivar req ivar)
 
+  let request_with_cancel t cancel (req : Message.request) =
+    let* () = Fiber.return () in
+    check_running t;
+    let ivar = Fiber.Ivar.create () in
+    let* (), cancel =
+      Fiber.Cancel.with_handler cancel
+        ~on_cancel:(fun () ->
+          match Id.Table.find_opt t.pending req.id with
+          | None -> Fiber.return ()
+          | Some ivar ->
+            Id.Table.remove t.pending req.id;
+            Fiber.Ivar.fill ivar (Error `Cancelled))
+        (fun () ->
+          let+ () =
+            let req = { req with Message.id = Some req.id } in
+            Chan.send t.chan [ Message req ]
+          in
+          register_request_ivar t req.id ivar)
+    in
+    match cancel with
+    | Cancelled () -> Fiber.return `Cancelled
+    | Not_cancelled -> (
+      let+ res = Fiber.Ivar.read ivar in
+      match res with
+      | Ok s -> `Ok s
+      | Error `Cancelled -> assert false
+      | Error `Stopped -> raise (Stopped req))
+
   module Batch = struct
     type response =
-      Message.request * (Jsonrpc.Response.t, [ `Stopped ]) result Fiber.Ivar.t
+      Message.request
+      * (Jsonrpc.Response.t, [ `Stopped | `Cancelled ]) result Fiber.Ivar.t
 
     type t =
       [ `Notification of Message.notification | `Request of response ] list ref
