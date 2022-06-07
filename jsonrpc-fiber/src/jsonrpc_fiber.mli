@@ -67,7 +67,7 @@ end) : sig
        _ t
     -> Fiber.Cancel.t
     -> Jsonrpc.Message.request
-    -> [`Ok of Jsonrpc.Response.t | `Cancelled] Fiber.t
+    -> [ `Ok of Jsonrpc.Response.t | `Cancelled ] Fiber.t
 
   module Batch : sig
     type t
