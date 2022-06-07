@@ -12,12 +12,6 @@ module Reply = struct
   let now r = Now r
 
   let later f = Later f
-
-  let to_jsonrpc t id to_json : Jsonrpc_fiber.Reply.t =
-    let f x = Jsonrpc.Response.ok id (to_json x) in
-    match t with
-    | Now r -> Jsonrpc_fiber.Reply.now (f r)
-    | Later k -> Jsonrpc_fiber.Reply.later (fun send -> k (fun r -> send (f r)))
 end
 
 let cancel_token = Fiber.Var.create ()
@@ -190,19 +184,31 @@ struct
         Fiber.return
           (Jsonrpc_fiber.Reply.now (Jsonrpc.Response.error req.id error), state)
       | Ok (In_request.E r) ->
+        let cancel = Fiber.Cancel.create () in
         let+ response, state =
-          let cancel = Fiber.Cancel.create () in
-          Fiber.finalize
-            (fun () ->
-              Fiber.Var.set cancel_token cancel (fun () ->
-                  Table.replace t.pending req.id cancel;
-                  h_on_request.on_request t r))
-            ~finally:(fun () ->
-              Table.remove t.pending req.id;
-              Fiber.return ())
+          Fiber.Var.set cancel_token cancel (fun () ->
+              Table.replace t.pending req.id cancel;
+              h_on_request.on_request t r)
+        in
+        let to_response x =
+          Jsonrpc.Response.ok req.id (In_request.yojson_of_result r x)
         in
         let reply =
-          Reply.to_jsonrpc response req.id (In_request.yojson_of_result r)
+          match response with
+          | Reply.Now r ->
+            Table.remove t.pending req.id;
+            Jsonrpc_fiber.Reply.now (to_response r)
+          | Reply.Later k ->
+            let f send =
+              Fiber.finalize
+                (fun () ->
+                  Fiber.Var.set cancel_token cancel (fun () ->
+                      k (fun r -> send (to_response r))))
+                ~finally:(fun () ->
+                  Table.remove t.pending req.id;
+                  Fiber.return ())
+            in
+            Jsonrpc_fiber.Reply.later (fun send -> f send)
         in
         (reply, state)
     in

@@ -190,33 +190,28 @@ end
 
 let%expect_test "end to end run of lsp tests" =
   test End_to_end_client.run End_to_end_server.run;
-  [%expect.unreachable]
-[@@expect.uncaught_exn {|
-  ( "jsonrpc response error {\
-   \n  \"data\": {\
-   \n    \"exn\": \"\\\"Assert_failure lsp-fiber/test/lsp_fiber_test.ml:159:26\\\"\",\
-   \n    \"backtrace\": \"\"\
-   \n  },\
-   \n  \"code\": -32603,\
-   \n  \"message\": \"uncaught exception\"\
-   \n}")
-  Trailing output
-  ---------------
-  client: waiting for initialization
-  server: initializing server
-  server: returning initialization result
-  client: server initialized. sending request
-  client: sending request cmd_cancel
-  client: sending request cmd_reply
-  client: waiting to receive notification before cancelling the request
-  server: received command cmd_cancel
-  server: sending message notification to client
-  client: received notification
-  {
-    "params": { "type": 3, "message": "notifying client" },
-    "method": "window/showMessage",
-    "jsonrpc": "2.0"
-  }
-  client: filled received_notification
-  client: received notification, cancelling the request
-  server: received command cmd_reply |}]
+  [%expect{|
+    client: waiting for initialization
+    server: initializing server
+    server: returning initialization result
+    client: server initialized. sending request
+    client: sending request cmd_cancel
+    client: sending request cmd_reply
+    client: waiting to receive notification before cancelling the request
+    server: received command cmd_cancel
+    server: sending message notification to client
+    client: received notification
+    {
+      "params": { "type": 3, "message": "notifying client" },
+      "method": "window/showMessage",
+      "jsonrpc": "2.0"
+    }
+    client: filled received_notification
+    client: received notification, cancelling the request
+    server: received command cmd_reply
+    client: req_cancel got cancelled
+    client: Successfully executed req_reply with result:
+    "successful execution"
+    client: sending request to shutdown
+    Successful termination of test
+    [TEST] finished |}]
