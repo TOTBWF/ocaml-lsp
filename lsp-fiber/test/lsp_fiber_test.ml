@@ -155,16 +155,12 @@ module End_to_end_server = struct
                 let* cancel = Rpc.Server.cancel_token () in
                 (* Make sure that we can access the cancel token in a Reply
                    response *)
-                (match cancel with
-                | None -> assert false
-                | Some _ -> assert true);
+                assert (Option.is_some cancel);
                 k result)
           , state )
         | _ ->
           (* Make sure that we can access the cancel token in a Now response *)
-          (match cancel with
-          | None -> assert false
-          | Some _ -> assert true);
+          assert (Option.is_some cancel);
           Fiber.return (Rpc.Reply.now result, state))
       | _ ->
         Jsonrpc.Response.Error.raise
