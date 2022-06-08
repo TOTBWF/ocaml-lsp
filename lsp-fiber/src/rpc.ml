@@ -186,9 +186,15 @@ struct
       | Ok (In_request.E r) ->
         let cancel = Fiber.Cancel.create () in
         let+ response, state =
-          Fiber.Var.set cancel_token cancel (fun () ->
-              Table.replace t.pending req.id cancel;
-              h_on_request.on_request t r)
+          Fiber.with_error_handler
+            ~on_error:
+              (Stdune.Exn_with_backtrace.map_and_reraise ~f:(fun exn ->
+                   Table.remove t.pending req.id;
+                   exn))
+            (fun () ->
+              Fiber.Var.set cancel_token cancel (fun () ->
+                  Table.replace t.pending req.id cancel;
+                  h_on_request.on_request t r))
         in
         let to_response x =
           Jsonrpc.Response.ok req.id (In_request.yojson_of_result r x)
