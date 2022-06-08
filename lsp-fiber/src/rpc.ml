@@ -185,11 +185,12 @@ struct
           (Jsonrpc_fiber.Reply.now (Jsonrpc.Response.error req.id error), state)
       | Ok (In_request.E r) ->
         let cancel = Fiber.Cancel.create () in
+        let remove = lazy (Table.remove t.pending req.id) in
         let+ response, state =
           Fiber.with_error_handler
             ~on_error:
               (Stdune.Exn_with_backtrace.map_and_reraise ~f:(fun exn ->
-                   Table.remove t.pending req.id;
+                   Lazy.force remove;
                    exn))
             (fun () ->
               Fiber.Var.set cancel_token cancel (fun () ->
@@ -202,7 +203,7 @@ struct
         let reply =
           match response with
           | Reply.Now r ->
-            Table.remove t.pending req.id;
+            Lazy.force remove;
             Jsonrpc_fiber.Reply.now (to_response r)
           | Reply.Later k ->
             let f send =
@@ -211,7 +212,7 @@ struct
                   Fiber.Var.set cancel_token cancel (fun () ->
                       k (fun r -> send (to_response r))))
                 ~finally:(fun () ->
-                  Table.remove t.pending req.id;
+                  Lazy.force remove;
                   Fiber.return ())
             in
             Jsonrpc_fiber.Reply.later (fun send -> f send)
